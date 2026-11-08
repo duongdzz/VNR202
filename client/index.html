@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TRIỂN LÃM: LỊCH SỬ ĐẢNG CỘNG SẢN VIỆT NAM — 3D Virtual Museum</title>
+  <link rel="stylesheet" href="./styles.css?v=20" />
+
+  <!-- Import Map cho Three.js ES Module -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js"
+      }
+    }
+  </script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <!-- Vùng chứa Canvas 3D -->
+  <div id="canvas-container"></div>
+
+  <!-- Toàn bộ HUD được bọc trong #ui-layer để ẩn/hiện tức thời khi nhấn phím [P] (Photo Mode) -->
+  <div id="ui-layer">
+    <!-- HUD Góc trên bên trái: Tiêu đề Triển lãm, Sổ tay tham quan & Phím tắt -->
+    <header class="hud-top-bar">
+      <div class="brand-badge">
+        <span class="dot-live"></span>
+        <div>
+          <h1>TRIỂN LÃM: LỊCH SỬ ĐẢNG CỘNG SẢN VIỆT NAM</h1>
+          <p id="room-status-text">Đang kết nối phòng...</p>
+        </div>
+      </div>
+
+      <!-- Sổ tay tham quan & Nhiệm vụ Truy tìm 8 Huy Hiệu Sao Vàng (Scavenger Hunt) -->
+      <div class="gamification-hud-row">
+        <div class="notebook-widget" id="notebook-widget">
+          <div class="notebook-row">
+            <span class="notebook-icon">📓</span>
+            <div>
+              <div class="notebook-title" id="notebook-progress-text">Đã khám phá: 0/20 hiện vật</div>
+              <div class="notebook-bar-bg">
+                <div class="notebook-bar-fill" id="notebook-bar-fill" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="notebook-widget stars-widget" id="stars-widget" title="Đi dạo khắp bảo tàng để thu thập đủ 8 Huy hiệu Sao Vàng mở khóa Balo Chiến Sĩ!">
+          <div class="notebook-row">
+            <span class="notebook-icon">⭐</span>
+            <div>
+              <div class="notebook-title" id="stars-progress-text">Sao Vàng ẩn: 0/8 • Chưa mở Balo</div>
+              <div class="notebook-bar-bg">
+                <div class="notebook-bar-fill stars-bar-fill" id="stars-bar-fill" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cụm 2 Nút Gọn Gàng: [⚙️ Cài đặt & Hướng dẫn] và [🧭 Chỉ đường GPS] (Không để tràn lan trên màn hình) -->
+      <div class="hud-action-buttons-row">
+        <button type="button" id="settings-toggle-btn" class="hud-menu-btn" title="Mở bảng Cài đặt Âm nhạc, Ngày/Đêm & Hướng dẫn điều khiển">
+          ⚙️ Cài đặt & Hướng dẫn
+        </button>
+        <button type="button" id="gps-menu-btn" class="hud-menu-btn gold" title="Mở bảng Chỉ đường GPS tới Hiện vật & Dòng thời gian">
+          🧭 Chỉ đường GPS
+        </button>
+      </div>
+
+      <!-- Bảng Cài Đặt & Hướng Dẫn (Mặc định ẩn, bấm nút ⚙️ mới mở ra) -->
+      <div id="settings-panel" class="settings-popover hidden">
+        <div class="settings-header">
+          <span>⚙️ CÀI ĐẶT KHÔNG GIAN, ÂM NHẠC & HƯỚNG DẪN</span>
+          <button type="button" id="settings-close-btn" class="settings-close-btn" title="Đóng">✕</button>
+        </div>
+
+        <!-- Mục 1: Đài Radio Ca Khúc Cách Mạng -->
+        <div class="settings-section">
+          <div class="settings-section-title">🎵 Đài Radio Ca Khúc Cách Mạng</div>
+          <div class="radio-widget" id="radio-widget">
+            <div class="radio-top-row">
+              <span class="radio-icon" id="radio-eq-icon">📻</span>
+              <select id="radio-song-select" class="radio-song-select" title="Chọn giai điệu Ca khúc Cách mạng">
+                <option value="0">1. Tiến Quân Ca (Quốc Ca)</option>
+                <option value="1">2. Ca Ngợi Hồ Chủ Tịch</option>
+                <option value="2">3. Đảng Đã Cho Ta Một Mùa Xuân</option>
+                <option value="3">4. Hò Kéo Pháo Điện Biên</option>
+                <option value="4">5. Như Có Bác Trong Ngày Đại Thắng</option>
+              </select>
+            </div>
+            <div class="radio-top-row" style="margin-top: 6px;">
+              <button type="button" id="radio-prev-btn" class="radio-ctrl-btn" title="Bài trước">⏮</button>
+              <button type="button" id="radio-play-btn" class="radio-ctrl-btn play" title="Bật / Tắt Đài Radio">▶ Phát nhạc</button>
+              <button type="button" id="radio-next-btn" class="radio-ctrl-btn" title="Bài tiếp">⏭</button>
+              <input type="range" id="radio-volume-slider" class="radio-volume-slider" min="0" max="1" step="0.05" value="0.55" title="Âm lượng Radio" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Mục 2: Chỉnh Ban Ngày / Hoàng Hôn / Ban Đêm & Pháo Hoa -->
+        <div class="settings-section">
+          <div class="settings-section-title">🌤️ Chế Độ Ngày / Đêm & Hiệu Ứng Lễ Hội</div>
+          <div class="atmosphere-toolbar">
+            <button type="button" id="time-of-day-btn" class="atmo-btn" title="Chuyển đổi không gian Ban Ngày / Hoàng Hôn / Ban Đêm">☀️ Ban Ngày</button>
+            <button type="button" id="fireworks-btn" class="atmo-btn gold" title="Bắn Pháo Hoa Chào Mừng Ngày Toàn Thắng trên bầu trời">🎆 Bắn Pháo Hoa</button>
+          </div>
+        </div>
+
+        <!-- Mục 3: Hướng dẫn phím điều khiển -->
+        <div class="settings-section">
+          <div class="settings-section-title">⌨️ Hướng Dẫn Phím Tắt Điều Khiển</div>
+          <div class="controls-hint">
+            <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 🕹️ Di chuyển tự do</span>
+            <span><kbd>E</kbd> / Chạm: Tương tác Hiện vật & Cầu thang</span>
+            <span><kbd>1</kbd> Chào <kbd>2</kbd> Vẫy cờ <kbd>3</kbd> Tim <kbd>4</kbd> Bật/Tắt Xe • <kbd>F</kbd> Còi</span>
+            <span><kbd>M</kbd> Ẩn/Hiện Bản đồ • <kbd>P</kbd> Photo Mode • <kbd>Enter</kbd> Chat</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Bản đồ thu nhỏ (Minimap 2D có nút Bật/Tắt) góc trên bên phải -->
+    <aside id="minimap-panel" class="minimap-panel">
+      <div class="minimap-header" id="minimap-header-bar">
+        <span id="minimap-zone-label">NGOÀI SÂN — QUẢNG TRƯỜNG</span>
+        <button type="button" id="minimap-toggle-btn" class="minimap-toggle-btn" title="Ẩn / Hiện Bản đồ [M]">−</button>
+      </div>
+      <div id="minimap-body" class="minimap-body">
+        <canvas id="minimap-canvas" width="196" height="196"></canvas>
+        <div class="minimap-legend">
+          <span><i class="dot dot-self"></i> Bạn</span>
+          <span><i class="dot dot-exhibit"></i> Hiện vật</span>
+          <span><i class="dot dot-special"></i> Điểm [E]</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Thông báo nổi ngắn (Toast) khi Thắp nến / Ghi sổ lưu niệm / Chào cờ -->
+    <div id="toast-banner" class="toast-banner hidden"></div>
+
+    <!-- Virtual Joystick cho Mobile / Cảm ứng (Góc dưới bên trái) -->
+    <div id="joystick-zone" class="joystick-zone hidden">
+      <div id="joystick-base" class="joystick-base">
+        <div id="joystick-stick" class="joystick-stick"></div>
+      </div>
+      <div class="joystick-caption">Kéo để di chuyển</div>
+    </div>
+
+    <!-- Cụm Nút Cảm Ứng Tương Tác [E] & Emote trên Mobile (Góc dưới bên phải) -->
+    <div id="mobile-controls-right" class="mobile-controls-right">
+      <div class="mobile-emote-row">
+        <button type="button" class="mobile-emote-btn" data-emote="salute" title="Chào điều lệnh [1]">🫡 1</button>
+        <button type="button" class="mobile-emote-btn" data-emote="flag_wave" title="Cầm cờ Việt Nam [2]">🇻🇳 2</button>
+        <button type="button" class="mobile-emote-btn" data-emote="heart_flag" title="Thả cờ & tim [3]">❤️ 3</button>
+      </div>
+      <button id="mobile-interact-btn" type="button" class="mobile-interact-btn hidden">
+        <span class="mobile-e-badge">E</span>
+        <span id="mobile-interact-text">Tương tác</span>
+      </button>
+    </div>
+
+    <!-- Khung Chat Trực Tuyến Đa Người Chơi (Online Multiplayer Chat) -->
+    <section id="chat-widget" class="chat-widget">
+      <div class="chat-header" id="chat-header-bar">
+        <span>💬 Trò chuyện trực tuyến (<kbd>Enter</kbd>)</span>
+        <button id="chat-toggle-btn" type="button" class="chat-toggle-btn" title="Thu gọn / Mở rộng">−</button>
+      </div>
+      <div id="chat-body" class="chat-body">
+        <div id="chat-messages" class="chat-messages">
+          <div class="chat-msg system-msg">
+            ★ Chào mừng đồng chí đến với Triển lãm Lịch sử Đảng! Nhấn <b>Enter</b> để trò chuyện.
+          </div>
+        </div>
+        <form id="chat-form" class="chat-form" autocomplete="off">
+          <input
+            id="chat-input"
+            type="text"
+            maxlength="120"
+            placeholder="Nhắn tin (Enter để gửi, Esc để thoát)..."
+          />
+          <button type="submit" class="chat-send-btn">Gửi</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Thanh chọn nhanh nón/mũ, tên & bật/tắt Joystick ở góc dưới bên trái -->
+    <div class="profile-bar">
+      <input id="player-name-input" type="text" maxlength="14" placeholder="Nhập tên của bạn..." />
+      <select id="hat-select">
+        <option value="pith">Mũ cối xanh lính</option>
+        <option value="conical">Nón lá Cờ đỏ sao vàng</option>
+        <option value="pith_backpack" id="opt-pith-backpack" disabled>🔒 Mũ cối + Balo Chiến Sĩ (Cần 8/8 ★)</option>
+        <option value="conical_backpack" id="opt-conical-backpack" disabled>🔒 Nón lá + Balo Chiến Sĩ (Cần 8/8 ★)</option>
+      </select>
+      <button id="respawn-btn" type="button">Đổi trang phục</button>
+      <button id="toggle-joystick-btn" type="button" class="joystick-toggle-btn hidden" title="Bật/tắt cần điều khiển cảm ứng">🕹️</button>
+    </div>
+
+    <!-- Bảng Chỉ Đường GPS Từ Nhân Vật Đến Hiện Vật & Dòng Thời Gian (Mặc định ẩn, mở bằng nút 🧭 Chỉ đường GPS) -->
+    <nav id="timeline-hud" class="timeline-hud hidden" aria-label="Bảng Chỉ Đường GPS & Dòng Thời Gian">
+      <div class="timeline-header-row">
+        <span class="timeline-label">🧭 CHỈ ĐƯỜNG GPS TỪ NHÂN VẬT ĐẾN HIỆN VẬT:</span>
+        <div class="timeline-actions">
+          <button type="button" id="gps-toggle-btn" class="timeline-action-btn active" title="Bật/Tắt vệt mũi tên dẫn đường GPS từ nhân vật tới hiện vật">✨ Mũi tên GPS: BẬT</button>
+          <button type="button" id="gps-nearest-btn" class="timeline-action-btn active" title="Tự động chỉ mũi tên GPS từ nhân vật đến hiện vật gần nhất chưa khám phá">🎯 Tự động Hiện vật gần nhất</button>
+          <button type="button" id="timeline-teleport-btn" class="timeline-action-btn gold" title="Dịch chuyển nhanh tới mục đang chọn">⚡ Tới ngay</button>
+          <button type="button" id="gps-close-btn" class="timeline-action-btn" title="Đóng bảng GPS">✕</button>
+        </div>
+      </div>
+      <div class="gps-select-row">
+        <label for="gps-exhibit-select" class="gps-select-label">📍 Chọn hiện vật muốn chỉ đường:</label>
+        <select id="gps-exhibit-select" class="gps-exhibit-select">
+          <option value="auto_nearest">🎯 Tự động chỉ đến Hiện vật gần nhất trên tầng</option>
+        </select>
+      </div>
+      <div id="timeline-steps-row" class="timeline-steps-row"></div>
+    </nav>
+
+    <!-- Prompt tương tác [E] nổi trên đầu nhân vật -->
+    <div id="interact-prompt" class="interact-prompt hidden">
+      <span class="key-badge">E</span>
+      <span id="interact-label" class="prompt-text">Khám phá hiện vật</span>
+    </div>
+
+    <!-- TÍNH NĂNG 1: Bảng điều khiển "Tour Hướng Dẫn Viên Ảo Tự Động" (Kích hoạt khi gặp Chiến Sĩ Tiêu Binh ở Cột cờ) -->
+    <section id="guided-tour-hud" class="guided-tour-hud hidden">
+      <div class="tour-header-row">
+        <span class="tour-badge" id="tour-step-badge">🫡 TOUR HƯỚNG DẪN VIÊN ẢO • TRẠM 1/8</span>
+        <span class="tour-period" id="tour-period-label">Quảng trường Ngoài trời</span>
+        <button type="button" id="tour-voice-btn" class="tour-voice-btn active" title="Bật/Tắt Giọng đọc thuyết minh tiếng Việt">🔊 Thuyết minh: BẬT</button>
+      </div>
+      <h3 class="tour-station-title" id="tour-station-title">Tên trạm tham quan</h3>
+      <p class="tour-narration-text" id="tour-narration-text">Lời thuyết minh lịch sử...</p>
+      <div class="tour-progress-bg">
+        <div class="tour-progress-fill" id="tour-progress-fill" style="width: 0%"></div>
+      </div>
+      <div class="tour-controls-row">
+        <button type="button" id="tour-prev-btn" class="tour-btn">⏮ Trạm trước</button>
+        <button type="button" id="tour-pause-btn" class="tour-btn primary">⏸ Tạm dừng</button>
+        <button type="button" id="tour-next-btn" class="tour-btn">Trạm tiếp ⏭</button>
+        <button type="button" id="tour-open-exhibit-btn" class="tour-btn gold">📖 Xem Hồ Sơ Hiện Vật</button>
+        <button type="button" id="tour-stop-btn" class="tour-btn danger">✕ Kết thúc Tour [Esc]</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Chỉ báo nhỏ khi đang ở chế độ Photo Mode [P] -->
+  <div id="photo-mode-hint" class="photo-mode-hint hidden">
+    📷 Chế độ Chụp ảnh (Photo Mode) • Nhấn <kbd>P</kbd> để hiện lại giao diện
+  </div>
+
+  <!-- Modal 2D hiển thị Tư liệu Lịch sử Đảng & Dấu đóng đỏ (Stamp Animation) -->
+  <div id="exhibit-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <button id="modal-close-btn" class="modal-close" aria-label="Đóng">✕</button>
+      <div class="modal-zone-tag" id="modal-zone">Chuyên đề</div>
+      <h2 id="modal-title">Tên Hiện Vật</h2>
+      <p class="modal-period" id="modal-period">Thời kỳ</p>
+
+      <!-- Con dấu đỏ đóng kịch xuống khi khám phá hiện vật -->
+      <div id="modal-stamp" class="red-stamp">★ ĐÃ KHÁM PHÁ ★</div>
+
+      <div class="restoration-frame">
+        <canvas id="restoration-canvas" width="640" height="340"></canvas>
+        <canvas id="artifact-3d-canvas" class="hidden" width="640" height="340"></canvas>
+        <div id="artifact-3d-hint" class="artifact-3d-hint hidden">
+          🖱️ Giữ chuột trái và kéo để xoay 360° • Cuộn con lăn chuột để phóng to / thu nhỏ
+        </div>
+        <p class="restoration-caption" id="modal-caption"></p>
+      </div>
+
+      <p class="modal-summary" id="modal-summary"></p>
+
+      <!-- Thanh Tương Tác Sâu Thực Tế Với Hiện Vật (Tính năng 3: Trèo xe tăng, Nghe giọng Bác, Lật trang sách) -->
+      <div id="modal-interactive-bar" class="modal-interactive-bar"></div>
+
+      <div class="modal-footer">
+        <span>Nhấn <kbd>E</kbd> hoặc <kbd>ESC</kbd> để tiếp tục tham quan</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Rạp Chiếu Phim Tư Liệu 2D (Mini Documentary Theater - Cinema View) -->
+  <div id="cinema-modal" class="modal-backdrop cinema-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="cinema-card">
+      <div class="cinema-top-bar">
+        <div class="cinema-badge-group">
+          <span class="cinema-live-tag">🎬 RẠP PHIM TƯ LIỆU TẦNG 1</span>
+          <h2 id="cinema-chapter-title">Chương I: Hội Nghị Thành Lập Đảng (3/2/1930)</h2>
+        </div>
+        <div class="cinema-source-tabs">
+          <button type="button" id="cinema-tab-interactive" class="cinema-tab-btn active">
+            📽️ Trình phát Tư liệu
+          </button>
+          <button type="button" id="cinema-tab-youtube" class="cinema-tab-btn">
+            📺 Video YouTube
+          </button>
+          <button id="cinema-close-btn" class="cinema-close-btn" aria-label="Đóng">✕ Đóng [Esc]</button>
+        </div>
+      </div>
+
+      <!-- Khung màn hình chiếu phim (Trình phát Tư liệu Canvas & YouTube Iframe) -->
+      <div class="cinema-viewport">
+        <canvas id="cinema-player-canvas" width="860" height="440"></canvas>
+        <iframe
+          id="cinema-youtube-iframe"
+          class="cinema-youtube-iframe hidden"
+          src=""
+          title="Phim Tư Liệu Lịch Sử Đảng Cộng Sản Việt Nam"
+          frameborder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowfullscreen
+        ></iframe>
+      </div>
+
+      <!-- Thanh điều khiển phát/dừng, tua (seek) và chỉnh âm lượng riêng cho từng máy -->
+      <div id="cinema-controls-bar" class="cinema-controls-bar">
+        <button type="button" id="cinema-play-btn" class="cinema-ctrl-btn">⏸ Tạm dừng</button>
+        <input
+          type="range"
+          id="cinema-seek-slider"
+          class="cinema-seek-slider"
+          min="0"
+          max="100"
+          step="0.5"
+          value="0"
+        />
+        <span id="cinema-time-label" class="cinema-time-label">00:00 / 00:28</span>
+        <div class="cinema-volume-group">
+          <span>🔊</span>
+          <input
+            type="range"
+            id="cinema-volume-slider"
+            class="cinema-volume-slider"
+            min="0"
+            max="1"
+            step="0.05"
+            value="0.6"
+          />
+        </div>
+      </div>
+
+      <!-- Danh sách chọn nhanh 4 Chương Tư Liệu Lịch Sử -->
+      <div class="cinema-chapter-list" id="cinema-chapter-list"></div>
+    </div>
+  </div>
+
+  <!-- Modal Trạm Đố Vui Lịch Sử Đảng & Vinh Danh "Nhà Sử Học Trẻ" (Tính năng 2) -->
+  <div id="quiz-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card quiz-card">
+      <button id="quiz-close-btn" class="modal-close" aria-label="Đóng">✕</button>
+      <div class="modal-zone-tag">🏆 TRẠM ĐỐ VUI LỊCH SỬ ĐẢNG — NHÀ SỬ HỌC TRẺ</div>
+      <div class="quiz-header-meta">
+        <span id="quiz-step-badge" class="quiz-step-badge">Câu hỏi 1 / 5</span>
+        <span id="quiz-score-badge" class="quiz-score-badge">Điểm: 0 / 500</span>
+      </div>
+
+      <div id="quiz-question-panel" class="quiz-question-panel">
+        <h3 id="quiz-question-text" class="quiz-question-text">Nội dung câu hỏi...</h3>
+        <div id="quiz-options-grid" class="quiz-options-grid"></div>
+        <div id="quiz-explanation-box" class="quiz-explanation-box hidden"></div>
+        <div class="quiz-actions-row">
+          <button type="button" id="quiz-next-btn" class="quiz-next-btn hidden">Câu tiếp theo ➔</button>
+        </div>
+      </div>
+
+      <div id="quiz-result-panel" class="quiz-result-panel hidden">
+        <div class="quiz-trophy-icon">🎖️</div>
+        <h2 id="quiz-result-title">Hoàn Thành Phần Thi!</h2>
+        <div class="quiz-meta-stat-row">
+          <span id="quiz-result-score" class="packbike-stat gold">Điểm số: 500</span>
+          <span id="quiz-result-time" class="packbike-stat">⏱️ Thời gian: 45s</span>
+          <span id="quiz-result-rank-badge" class="packbike-stat hp">Chiến Sĩ Lịch Sử Xuất Sắc</span>
+        </div>
+        <p id="quiz-result-summary" class="quiz-result-summary"></p>
+        <div class="quiz-submit-box">
+          <input type="text" id="quiz-player-name-input" class="quiz-name-input" maxlength="16" placeholder="Nhập tên của bạn..." />
+          <button type="button" id="quiz-submit-leaderboard-btn" class="interactive-action-btn gold">🏅 Lưu vào Bảng Xếp Hạng Top 10</button>
+        </div>
+        <p id="quiz-submit-status" class="quiz-submit-status hidden">✅ Đã lưu kết quả thành công!</p>
+        <div class="quiz-result-actions" style="margin-top: 14px;">
+          <button type="button" id="quiz-retry-btn" class="quiz-next-btn">🔄 Thi lượt mới (5 câu ngẫu nhiên)</button>
+          <button type="button" id="quiz-view-leaderboard-btn" class="modal-action-btn secondary">🏆 Xem Bảng Vinh Danh</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Bãi Gửi Xe — Đổi Phương Tiện (Xe đạp thồ / Jeep UAZ / Máy bay mini) -->
+  <div id="vehicle-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card vehicle-card">
+      <button id="vehicle-close-btn" class="modal-close" aria-label="Đóng">✕</button>
+      <div class="modal-zone-tag">🚗 BÃI GỬI XE — ĐỔI PHƯƠNG TIỆN THAM QUAN</div>
+      <h2>Trạm Điều Động Phương Tiện Lịch Sử</h2>
+      <p class="modal-period" id="vehicle-progress-desc">Khám phá hiện vật trong bảo tàng để mở khóa các phương tiện đặc biệt!</p>
+
+      <div class="vehicle-cards-grid" id="vehicle-cards-grid">
+        <!-- Render cards dynamically -->
+      </div>
+
+      <div class="modal-footer" style="margin-top: 18px;">
+        <span>Phím tắt: Bấm <kbd>4</kbd> để Bật / Cất nhanh xe • Bấm <kbd>F</kbd> rung chuông / còi • Nhấn <kbd>E</kbd> hoặc <kbd>ESC</kbd> để đóng</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Bảng Vinh Danh Top 10 — Chiến Sĩ Lịch Sử Xuất Sắc -->
+  <div id="quiz-leaderboard-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card leaderboard-card">
+      <button id="quiz-leaderboard-close-btn" class="modal-close" aria-label="Đóng">✕</button>
+      <div class="modal-zone-tag">🏆 BẢNG VINH DANH TRỰC TUYẾN</div>
+      <h2>Top 10 — Chiến Sĩ Lịch Sử Xuất Sắc</h2>
+      <p class="modal-period">Bảng xếp hạng thành tích Đố vui Lịch sử Đảng (ưu tiên Điểm số cao & Thời gian hoàn thành nhanh nhất).</p>
+
+      <div class="leaderboard-table-wrap">
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th style="width: 50px;">Hạng</th>
+              <th>Chiến Sĩ / Người Tham Quan</th>
+              <th style="width: 90px;">Điểm Số</th>
+              <th style="width: 90px;">Thời Gian</th>
+              <th>Danh Hiệu</th>
+            </tr>
+          </thead>
+          <tbody id="quiz-leaderboard-tbody">
+            <!-- Render rows dynamically -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="modal-footer" style="margin-top: 16px;">
+        <span>Đến Trạm Đố Vui để tham gia trả lời câu hỏi và ghi tên mình lên Bảng Vàng! • Nhấn <kbd>ESC</kbd> để đóng</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TÍNH NĂNG 3: Modal Mini-Game Lịch Sử "Chuyến Xe Đạp Thồ Tiếp Tế Điện Biên" (1954) -->
+  <div id="packbike-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card packbike-card">
+      <button id="packbike-close-btn" class="modal-close" aria-label="Đóng">✕</button>
+      <div class="modal-zone-tag">🚲 MINI-GAME LỊCH SỬ — CHIẾN DỊCH ĐIỆN BIÊN PHỦ (1954)</div>
+      <h2>Chuyến Xe Đạp Thồ Vượt Đèo Pha Đin Tiếp Tế Tiền Tuyến</h2>
+      <p class="modal-period">Dùng phím <kbd>W</kbd>/<kbd>S</kbd> hoặc <kbd>↑</kbd>/<kbd>↓</kbd> để chuyển làn né hố bom & đá lăn, thu thập Bao Gạo (+50kg) và Hòm Đạn (+80kg) đưa tới Đồi A1!</p>
+
+      <div class="packbike-hud-bar">
+        <span id="packbike-dist-badge" class="packbike-stat">⛰️ Đèo Pha Đin: 0 / 1500m</span>
+        <span id="packbike-cargo-badge" class="packbike-stat gold">🌾 Hàng tiếp tế: 200 kg</span>
+        <span id="packbike-hp-badge" class="packbike-stat hp">❤️❤️❤️</span>
+      </div>
+
+      <div class="packbike-canvas-wrap">
+        <canvas id="packbike-canvas" width="720" height="360"></canvas>
+      </div>
+
+      <div class="packbike-controls-bar">
+        <button type="button" id="packbike-up-btn" class="modal-action-btn secondary">▲ Làn Trên [W / ↑]</button>
+        <button type="button" id="packbike-boost-btn" class="modal-action-btn">⚡ Đẩy Nhanh Vượt Dốc [Space]</button>
+        <button type="button" id="packbike-down-btn" class="modal-action-btn secondary">▼ Làn Dưới [S / ↓]</button>
+        <button type="button" id="packbike-restart-btn" class="modal-action-btn">🔄 Chơi Lại Từ Đầu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TÍNH NĂNG 1: Modal Mini-Game Lịch Sử "Hò Kéo Pháo Vượt Dốc Điện Biên" (1954) -->
+  <div id="artillery-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card packbike-card">
+      <button id="artillery-close-btn" class="modal-close" aria-label="Đóng">✕</button>
+      <div class="modal-zone-tag">🎯 MINI-GAME NHỊP ĐIỆU — HÒ KÉO PHÁO ĐIỆN BIÊN PHỦ (1954)</div>
+      <h2>Hò Dô Ta Nào! Kéo Pháo 105mm Vượt Dốc Chuối Lên Trận Địa</h2>
+      <p class="modal-period">Canh đúng lúc vạch nhịp chạm vào <b>VÙNG VÀNG "HÒ DÔ TA!"</b> rồi nhấn phím <kbd>Space</kbd> (hoặc bấm nút Kéo Pháo) để hợp sức kéo pháo nặng 2,4 tấn lên đỉnh đèo!</p>
+
+      <div class="packbike-hud-bar">
+        <span id="artillery-dist-badge" class="packbike-stat">⛰️ Dốc Chuối: 0 / 100m</span>
+        <span id="artillery-combo-badge" class="packbike-stat gold">🔥 Chuỗi nhịp chuẩn: x0</span>
+        <span id="artillery-status-badge" class="packbike-stat">💪 Sẵn sàng kéo pháo!</span>
+      </div>
+
+      <div class="packbike-canvas-wrap">
+        <canvas id="artillery-canvas" width="720" height="340"></canvas>
+      </div>
+
+      <div class="packbike-controls-bar">
+        <button type="button" id="artillery-pull-btn" class="interactive-action-btn gold">💪 HÒ DÔ TA! KÉO PHÁO! [Space]</button>
+        <button type="button" id="artillery-restart-btn" class="modal-action-btn secondary">🔄 Kéo Lại Từ Đầu</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js?v=20"></script>
+</body>
+</html>
