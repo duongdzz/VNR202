@@ -56,11 +56,17 @@ export class SocketHandler {
       };
 
       if (typeof window.io === 'function') {
-        try {
-          this.socket = window.io({
-            reconnectionAttempts: 1,
-            timeout: 1000
-          });
+  try {
+    // Nếu ở localhost thì để trống, nếu ở Vercel thì trỏ về server backend online
+    const BACKEND_URL = window.location.hostname === 'localhost' 
+      ? undefined 
+      : 'https://vnr202-server.onrender.com';
+
+    this.socket = window.io(BACKEND_URL, {
+      transports: ['websocket'],
+      reconnectionAttempts: 5,
+      timeout: 5000
+    });
 
           const timer = setTimeout(fallbackToLocalChannel, 1100);
 
