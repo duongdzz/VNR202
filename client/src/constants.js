@@ -235,7 +235,7 @@ export const EXHIBITS_DATA = [
     interactRadius: 4.1,
     artifactType: 'hanoi_flagpole',
     artifactColor: PALETTE.PARTY_RED,
-    imageUrl: './src/assets/cot-co-ha-noi.jpg',
+    imageUrl: './src/assets/cot-co-ha-noi-1.jpg',
     summary:
       'Kỳ đài Cột cờ Hà Nội uy nghiêm giữa quảng trường trung tâm, nơi tung bay lá cờ đỏ sao vàng 5 cánh từ mùa Thu Cách mạng Tháng Tám 1945. Bạn có thể bước tới vòng tròn đỏ đằng trước cột cờ (Z = 30.8) và nhấn [E] để thực hiện nghi thức Chào cờ.',
     imageCaption: 'Tư liệu Kỳ đài Cột cờ Hà Nội lịch sử.'
